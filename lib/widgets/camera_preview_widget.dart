@@ -1,7 +1,9 @@
 // lib/widgets/camera_preview_widget.dart
+
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:provider/provider.dart';
+
 import '../providers/camera_provider.dart';
 import '../providers/pose_detector_provider.dart';
 import 'skeleton_painter.dart';
@@ -18,32 +20,44 @@ class CameraPreviewWidget extends StatelessWidget {
 
         return LayoutBuilder(
           builder: (context, constraints) {
-            // Update preview size
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              cameraProvider.setPreviewSize(constraints.biggest);
-            });
+            final double aspect =
+                cameraProvider.cameraController!.value.aspectRatio;
 
-            return Stack(
-              fit: StackFit.expand,
-              children: [
-                // Camera Preview
-                CameraPreview(cameraProvider.cameraController!),
+            return Center(
+              child: AspectRatio(
+                aspectRatio: aspect, // Ensures no stretch
+                child: LayoutBuilder(
+                  builder: (context, cameraConstraints) {
+                    final previewSize = Size(
+                      cameraConstraints.maxWidth,
+                      cameraConstraints.maxHeight,
+                    );
 
-                // Skeleton Overlay
-                if (poseProvider.latestPose != null &&
-                    cameraProvider.imageSize != null &&
-                    cameraProvider.imageRotation != null &&
-                    cameraProvider.previewSize != null)
-                  CustomPaint(
-                    painter: SkeletonPainter(
-                      pose: poseProvider.latestPose,
-                      imageSize: cameraProvider.imageSize!,
-                      previewSize: cameraProvider.previewSize!,
-                      rotation: cameraProvider.imageRotation!,
-                      isFrontCamera: cameraProvider.isFrontCamera,
-                    ),
-                  ),
-              ],
+
+
+                    return Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        // Camera Preview
+                        CameraPreview(cameraProvider.cameraController!),
+
+                        // Skeleton Overlay
+                        if (poseProvider.latestPose != null)
+                          CustomPaint(
+                            painter: SkeletonPainter(
+                              poses: poseProvider.poses,
+                              imageSize: cameraProvider.imageSize!,   // MLKit size (e.g. 720x480)
+                              previewSize: previewSize,               // Current preview dimensions
+                              cameraLensDirection:
+                              cameraProvider.cameraLensDirection!,
+                              rotation: cameraProvider.imageRotation!,
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+              ),
             );
           },
         );

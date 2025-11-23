@@ -70,7 +70,7 @@ class _SquatCounterScreenState extends State<SquatCounterScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Squat Counter'),
+        title: Text('Correcta'),
         centerTitle: true,
         elevation: 2,
         actions: [
@@ -88,8 +88,9 @@ class _SquatCounterScreenState extends State<SquatCounterScreen> {
         ],
       ),
       body: Stack(
+        fit: StackFit.expand,
         children: [
-          // Camera Preview
+          // Camera Preview with Skeleton Overlay
           CameraPreviewWidget(),
 
           // UI Overlay

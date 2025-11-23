@@ -1,145 +1,134 @@
-// lib/widgets/skeleton_painter.dart
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:camera/camera.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
-import 'package:google_mlkit_commons/google_mlkit_commons.dart';
-import 'dart:math' as math;
+
+import '../utils/coordinates_translator.dart';
 
 class SkeletonPainter extends CustomPainter {
-  final Pose? pose;
-  final Size imageSize;
-  final Size previewSize;
+  final List<Pose> poses;
+  final Size imageSize;       // e.g. 720x480 from CameraImage
+  final Size previewSize;     // size of CameraPreview widget
+  final CameraLensDirection cameraLensDirection;
   final InputImageRotation rotation;
-  final bool isFrontCamera;
 
   SkeletonPainter({
-    required this.pose,
+    required this.poses,
     required this.imageSize,
     required this.previewSize,
+    required this.cameraLensDirection,
     required this.rotation,
-    required this.isFrontCamera,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (pose == null) return;
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4.0
+      ..color = Colors.green;
 
-    final Paint landmarkPaint = Paint()
-      ..color = Colors.lightGreenAccent
-      ..strokeWidth = 6
-      ..style = PaintingStyle.fill;
+    final leftPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.0
+      ..color = Colors.yellow;
 
-    final Paint bonePaint = Paint()
-      ..color = Colors.deepPurpleAccent
-      ..strokeWidth = 3
-      ..style = PaintingStyle.stroke;
+    final rightPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.0
+      ..color = Colors.blueAccent;
 
-    // Draw all bones first
-    for (var bone in _bones) {
-      final p1 = pose!.landmarks[bone.$1];
-      final p2 = pose!.landmarks[bone.$2];
+    for (final pose in poses) {
+      pose.landmarks.forEach((_, landmark) {
+        canvas.drawCircle(
+            Offset(
+              translateX(
+                landmark.x,
+                size,
+                imageSize,
+                rotation,
+                cameraLensDirection,
+              ),
+              translateY(
+                landmark.y,
+                size,
+                imageSize,
+                rotation,
+                cameraLensDirection,
+              ),
+            ),
+            1,
+            paint);
+      });
 
-      if (p1 != null && p2 != null) {
-        final mapped1 = _mapPoint(p1.x, p1.y);
-        final mapped2 = _mapPoint(p2.x, p2.y);
-
-        canvas.drawLine(mapped1, mapped2, bonePaint);
+      void paintLine(
+          PoseLandmarkType type1, PoseLandmarkType type2, Paint paintType) {
+        final PoseLandmark joint1 = pose.landmarks[type1]!;
+        final PoseLandmark joint2 = pose.landmarks[type2]!;
+        canvas.drawLine(
+            Offset(
+                translateX(
+                  joint1.x,
+                  size,
+                  imageSize,
+                  rotation,
+                  cameraLensDirection,
+                ),
+                translateY(
+                  joint1.y,
+                  size,
+                  imageSize,
+                  rotation,
+                  cameraLensDirection,
+                )),
+            Offset(
+                translateX(
+                  joint2.x,
+                  size,
+                  imageSize,
+                  rotation,
+                  cameraLensDirection,
+                ),
+                translateY(
+                  joint2.y,
+                  size,
+                  imageSize,
+                  rotation,
+                  cameraLensDirection,
+                )),
+            paintType);
       }
-    }
 
-    // Draw all keypoints
-    pose!.landmarks.forEach((type, landmark) {
-      final mapped = _mapPoint(landmark.x, landmark.y);
-      canvas.drawCircle(mapped, 4, landmarkPaint);
-    });
+      //Draw arms
+      paintLine(
+          PoseLandmarkType.leftShoulder, PoseLandmarkType.leftElbow, leftPaint);
+      paintLine(
+          PoseLandmarkType.leftElbow, PoseLandmarkType.leftWrist, leftPaint);
+      paintLine(PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow,
+          rightPaint);
+      paintLine(
+          PoseLandmarkType.rightElbow, PoseLandmarkType.rightWrist, rightPaint);
+
+      //Draw Body
+      paintLine(
+          PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip, leftPaint);
+      paintLine(PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip,
+          rightPaint);
+
+      //Draw legs
+      paintLine(PoseLandmarkType.leftHip, PoseLandmarkType.leftKnee, leftPaint);
+      paintLine(
+          PoseLandmarkType.leftKnee, PoseLandmarkType.leftAnkle, leftPaint);
+      paintLine(
+          PoseLandmarkType.rightHip, PoseLandmarkType.rightKnee, rightPaint);
+      paintLine(
+          PoseLandmarkType.rightKnee, PoseLandmarkType.rightAnkle, rightPaint);
+    }
   }
-
-  /// Mapping ML Kit camera coordinates to the device preview coordinates
-  Offset _mapPoint(double x, double y) {
-    double rotatedX = x;
-    double rotatedY = y;
-
-    // 1. FIX ORIENTATION
-    switch (rotation) {
-      case InputImageRotation.rotation90deg:
-        rotatedX = y;
-        rotatedY = imageSize.width - x;
-        break;
-
-      case InputImageRotation.rotation180deg:
-        rotatedX = imageSize.width - x;
-        rotatedY = imageSize.height - y;
-        break;
-
-      case InputImageRotation.rotation270deg:
-        rotatedX = imageSize.height - y;
-        rotatedY = x;
-        break;
-
-      default:
-        break;
-    }
-
-    // 2. MIRROR FOR FRONT CAMERA
-    if (isFrontCamera) {
-      rotatedX = imageSize.width - rotatedX;
-    }
-
-    // 3. SCALE TO PREVIEW SIZE
-    final double scaleX = previewSize.width / imageSize.width;
-    final double scaleY = previewSize.height / imageSize.height;
-    final double scale = math.max(scaleX, scaleY);
-
-    final scaledX = rotatedX * scale;
-    final scaledY = rotatedY * scale;
-
-    // 4. REMOVE LETTERBOXING
-    final double offsetX = (scaledWidth - previewSize.width) / 2;
-    final double offsetY = (scaledHeight - previewSize.height) / 2;
-
-    return Offset(
-      scaledX - offsetX,
-      scaledY - offsetY,
-    );
-  }
-
-  double get scaledWidth =>
-      (rotation == InputImageRotation.rotation90deg ||
-          rotation == InputImageRotation.rotation270deg)
-          ? imageSize.height *
-          math.max(previewSize.width / imageSize.height,
-              previewSize.height / imageSize.width)
-          : imageSize.width *
-          math.max(previewSize.width / imageSize.width,
-              previewSize.height / imageSize.height);
-
-  double get scaledHeight =>
-      (rotation == InputImageRotation.rotation90deg ||
-          rotation == InputImageRotation.rotation270deg)
-          ? imageSize.width *
-          math.max(previewSize.width / imageSize.height,
-              previewSize.height / imageSize.width)
-          : imageSize.height *
-          math.max(previewSize.width / imageSize.width,
-              previewSize.height / imageSize.height);
 
   @override
-  bool shouldRepaint(covariant SkeletonPainter oldDelegate) =>
-      oldDelegate.pose != pose;
+  bool shouldRepaint(covariant SkeletonPainter oldDelegate) {
+    return oldDelegate.imageSize != imageSize || oldDelegate.poses != poses;
+  }
 }
 
-/// BONES (connecting joints)
-final List<(PoseLandmarkType, PoseLandmarkType)> _bones = [
-  (PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder),
-  (PoseLandmarkType.leftShoulder, PoseLandmarkType.leftElbow),
-  (PoseLandmarkType.leftElbow, PoseLandmarkType.leftWrist),
-  (PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow),
-  (PoseLandmarkType.rightElbow, PoseLandmarkType.rightWrist),
-  (PoseLandmarkType.leftHip, PoseLandmarkType.rightHip),
-  (PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip),
-  (PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip),
-  (PoseLandmarkType.leftHip, PoseLandmarkType.leftKnee),
-  (PoseLandmarkType.leftKnee, PoseLandmarkType.leftAnkle),
-  (PoseLandmarkType.rightHip, PoseLandmarkType.rightKnee),
-  (PoseLandmarkType.rightKnee, PoseLandmarkType.rightAnkle),
-];
+
